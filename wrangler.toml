@@ -2,6 +2,9 @@ name = "sbti-test"
 main = "src/worker.js"
 compatibility_date = "2024-11-12"
 
+[build]
+command = "node ./scripts/prepare-assets.mjs"
+
 [assets]
 directory = ".dist"
 binding = "ASSETS"

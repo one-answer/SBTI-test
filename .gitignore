@@ -18,3 +18,4 @@ logs
 # Wrangler
 .wrangler
 .dist
+package-lock.json

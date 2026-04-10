@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SBTI 人格测试</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="./image/CTRL.png" />
+  <link rel="apple-touch-icon" href="./image/CTRL.png" />
   <style>
     :root {
       --bg: #f6faf6;
@@ -14,6 +16,7 @@
       --soft: #edf6ef;
       --accent: #6c8d71;
       --accent-strong: #4d6a53;
+      --accent-soft: #8cab92;
       --shadow: 0 16px 40px rgba(47, 73, 55, 0.08);
       --radius: 22px;
     }
@@ -123,22 +126,78 @@
       margin-top: 22px;
     }
     .hero-minimal {
-      min-height: 48vh;
+      min-height: 62vh;
       display: flex;
       flex-direction: column;
       justify-content: center;
       align-items: center;
       text-align: center;
-      padding: 42px 20px;
+      padding: 54px 22px;
+      border: 1px solid #d3e3d6;
+      background:
+        radial-gradient(circle at top, rgba(134, 170, 141, 0.17), rgba(134, 170, 141, 0) 48%),
+        linear-gradient(180deg, #ffffff 0%, #f6fbf7 100%);
+      animation: introFloat 7s ease-in-out infinite;
     }
-    .hero-minimal::after { display: none; }
+    .hero-minimal::before {
+      content: "SBTI";
+      position: absolute;
+      top: 26px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #64826a;
+      font-size: 12px;
+      letter-spacing: 0.2em;
+      font-weight: 700;
+      border: 1px solid #d8e6db;
+      background: #f4faf5;
+      border-radius: 999px;
+      padding: 6px 12px;
+    }
+    .hero-minimal::after {
+      content: "";
+      position: absolute;
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      left: -65px;
+      bottom: -95px;
+      background: radial-gradient(circle, rgba(140, 171, 146, 0.28), rgba(140, 171, 146, 0));
+      pointer-events: none;
+      animation: orbShift 8s ease-in-out infinite;
+    }
     .hero-minimal h1 {
-      max-width: none;
-      margin: 0;
+      max-width: 620px;
+      margin: 8px 0 0;
+      text-wrap: balance;
+    }
+    .intro-sub {
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.85;
+      max-width: 620px;
     }
     .hero-actions-single {
       justify-content: center;
-      margin-top: 28px;
+      margin-top: 30px;
+    }
+    .intro-meta {
+      margin-top: 16px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .intro-meta span {
+      border: 1px solid #d8e6db;
+      background: #f5faf6;
+      color: #5a7660;
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
     }
 
     button {
@@ -158,6 +217,15 @@
       border-radius: 14px;
       box-shadow: 0 12px 30px rgba(77, 106, 83, 0.18);
       font-weight: 700;
+    }
+    #startBtn {
+      min-width: 148px;
+      background: linear-gradient(135deg, var(--accent-strong), var(--accent-soft));
+      box-shadow: 0 14px 28px rgba(77, 106, 83, 0.22);
+      animation: pulseGlow 2.6s ease-in-out infinite;
+    }
+    #startBtn:hover {
+      box-shadow: 0 16px 36px rgba(77, 106, 83, 0.32);
     }
 
     .btn-secondary {
@@ -661,6 +729,25 @@
       flex-wrap: wrap;
       margin-top: 22px;
     }
+    @keyframes introFloat {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-2px); }
+    }
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 14px 28px rgba(77, 106, 83, 0.22); }
+      50% { box-shadow: 0 16px 36px rgba(77, 106, 83, 0.34); }
+    }
+    @keyframes orbShift {
+      0%, 100% { transform: translate(0, 0); opacity: 1; }
+      50% { transform: translate(12px, -6px); opacity: 0.7; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .hero-minimal,
+      .hero-minimal::after,
+      #startBtn {
+        animation: none;
+      }
+    }
     @media (max-width: 860px) {
       .result-top { grid-template-columns: 1fr; }
     }
@@ -680,6 +767,16 @@
       .question-title { font-size: 15px; }
       .dim-grid,
       .score-grid { grid-template-columns: 1fr; }
+      .hero-minimal {
+        min-height: 56vh;
+        padding: 48px 16px;
+      }
+      .hero-minimal::before {
+        top: 20px;
+      }
+      .intro-sub {
+        font-size: 14px;
+      }
     }
   </style>
 </head>
@@ -688,6 +785,12 @@
     <section id="intro" class="screen active">
       <div class="hero card hero-minimal">
         <h1>MBTI已经过时，SBTI来了。</h1>
+        <p class="intro-sub">31 道问题，几分钟出结果。纯娱乐向，建议和朋友一起测，互相截图拷打。</p>
+        <div class="intro-meta">
+          <span>31题</span>
+          <span>免费</span>
+          <span>娱乐向</span>
+        </div>
         <div class="hero-actions hero-actions-single">
           <button id="startBtn" class="btn-primary">开始测试</button>
         </div>
@@ -1733,3 +1836,4 @@
 
 </body>
 </html>
+

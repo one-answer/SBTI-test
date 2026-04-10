@@ -1,0 +1,13 @@
+{
+  "name": "sbti-test-worker",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "prepare:assets": "node ./scripts/prepare-assets.mjs",
+    "dev": "npm run prepare:assets && wrangler dev",
+    "deploy": "npm run prepare:assets && wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.11.1"
+  }
+}

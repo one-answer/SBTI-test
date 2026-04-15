@@ -589,6 +589,46 @@
     .poster-box.no-image .poster-image {
       display: none;
     }
+    .poster-fallback {
+      display: none;
+      min-height: 220px;
+      border-radius: 18px;
+      border: 1px dashed #cbdccd;
+      background: linear-gradient(180deg, #ffffff, #f4f9f5);
+      padding: 16px;
+      position: relative;
+      z-index: 1;
+      align-content: center;
+    }
+    .poster-box.no-image .poster-fallback {
+      display: grid;
+      gap: 10px;
+    }
+    .poster-fallback-code {
+      display: inline-flex;
+      width: fit-content;
+      border-radius: 999px;
+      border: 1px solid #d5e3d8;
+      background: #f3faf4;
+      color: var(--accent-strong);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      padding: 6px 10px;
+    }
+    .poster-fallback-name {
+      font-size: clamp(24px, 4vw, 34px);
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      color: var(--text);
+      font-weight: 800;
+    }
+    .poster-fallback-note {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.75;
+    }
     .poster-caption {
       margin-top: 14px;
       color: var(--muted);
@@ -794,14 +834,16 @@
     <section id="intro" class="screen active">
       <div class="hero card hero-minimal">
         <h1>MBTI已经过时，SBTI来了。</h1>
-        <p class="intro-sub">31 道问题，几分钟出结果。纯娱乐向，建议和朋友一起测，互相截图拷打。</p>
+        <p class="intro-sub">现在支持两种模式：SBTI整活版 + 程序员人格版。纯娱乐向，建议和朋友一起测，互相截图拷打。</p>
         <div class="intro-meta">
-          <span>31题</span>
+          <span>SBTI 31题</span>
+          <span>程序员版 12题</span>
           <span>免费</span>
           <span>娱乐向</span>
         </div>
         <div class="hero-actions hero-actions-single">
-          <button id="startBtn" class="btn-primary">开始测试</button>
+          <button id="startBtn" class="btn-primary">开始 SBTI</button>
+          <button id="startDevBtn" class="btn-secondary">开始程序员人格测试</button>
         </div>
       </div>
     </section>
@@ -809,6 +851,7 @@
     <section id="test" class="screen">
       <div class="test-wrap card">
         <div class="topbar">
+          <div class="badge" id="currentModeBadge">SBTI 人格测试</div>
           <div class="progress"><span id="progressBar"></span></div>
           <div class="progress-text" id="progressText">0 / 31</div>
         </div>
@@ -832,6 +875,11 @@
           <div class="result-top">
             <div class="poster-box" id="posterBox">
               <img id="posterImage" class="poster-image" alt="人格结果图" />
+              <div id="posterFallback" class="poster-fallback" aria-hidden="true">
+                <div class="poster-fallback-code" id="posterFallbackCode">TYPE</div>
+                <div class="poster-fallback-name" id="posterFallbackName">占位图已就位</div>
+                <p class="poster-fallback-note" id="posterFallbackNote">该模式暂未配置专属海报，先看文字解读。</p>
+              </div>
               <div id="posterCaption" class="poster-caption">怎么样，被我拿捏了吧？</div>
             </div>
 
@@ -844,12 +892,12 @@
           </div>
 
           <div class="analysis-box">
-            <h3>该人格的简单解读</h3>
+            <h3 id="resultDescTitle">该人格的简单解读</h3>
             <p id="resultDesc"></p>
           </div>
 
           <div class="dim-box">
-            <h3>十五维度评分</h3>
+            <h3 id="resultDimTitle">十五维度评分</h3>
             <div id="dimList" class="dim-list"></div>
           </div>
 
@@ -1573,10 +1621,524 @@
 
     const DRUNK_TRIGGER_QUESTION_ID = 'drink_gate_q2';
 
+    const DEV_DIMENSION_META = {
+      LGC: { name: 'LGC 逻辑严谨度', model: '工程思维' },
+      SPD: { name: 'SPD 交付节奏', model: '工程思维' },
+      QLT: { name: 'QLT 质量偏好', model: '工程思维' },
+      COL: { name: 'COL 协作沟通', model: '团队协作' },
+      PRD: { name: 'PRD 产品意识', model: '产品协作' },
+      OPN: { name: 'OPN 探索倾向', model: '成长风格' }
+    };
+
+    const DEV_DIMENSION_ORDER = ['LGC', 'SPD', 'QLT', 'COL', 'PRD', 'OPN'];
+
+    const DEV_QUESTIONS = [
+      {
+        id: 'd1', dim: 'LGC',
+        text: '线上突然报错，你第一反应更像哪种？',
+        options: [
+          { label: '先重启/回滚看看能不能好。', value: 1 },
+          { label: '先翻日志，边看边猜问题点。', value: 2 },
+          { label: '先稳定复现路径，再定位根因。', value: 3 }
+        ]
+      },
+      {
+        id: 'd2', dim: 'LGC',
+        text: '接到一个新需求，你通常会：',
+        options: [
+          { label: '直接开写，边写边想。', value: 1 },
+          { label: '先拆主流程，细节后补。', value: 2 },
+          { label: '先明确边界、异常和数据流。', value: 3 }
+        ]
+      },
+      {
+        id: 'd3', dim: 'SPD',
+        text: '面对紧急需求，你更偏向：',
+        options: [
+          { label: '先把风险列全，速度可以慢点。', value: 1 },
+          { label: '在风险可控下推进。', value: 2 },
+          { label: '先把可用版本冲出去，再持续迭代。', value: 3 }
+        ]
+      },
+      {
+        id: 'd4', dim: 'SPD',
+        text: '如果排期突然缩短一半，你会：',
+        options: [
+          { label: '优先争取延期，宁可慢也要稳。', value: 1 },
+          { label: '保住核心，适度砍边缘。', value: 2 },
+          { label: '主动重排任务，先交付核心闭环。', value: 3 }
+        ]
+      },
+      {
+        id: 'd5', dim: 'QLT',
+        text: '对单元测试的态度更像：',
+        options: [
+          { label: '关键路径才补一点。', value: 1 },
+          { label: '看模块重要性决定投入。', value: 2 },
+          { label: '能覆盖就覆盖，测试是安全网。', value: 3 }
+        ]
+      },
+      {
+        id: 'd6', dim: 'QLT',
+        text: '你对“先能跑再说”的看法：',
+        options: [
+          { label: '非常认同，先活下来。', value: 1 },
+          { label: '阶段性可接受，但要补债。', value: 2 },
+          { label: '可跑不等于可维护，质量要同步。', value: 3 }
+        ]
+      },
+      {
+        id: 'd7', dim: 'COL',
+        text: 'Code Review 里，你更常做的是：',
+        options: [
+          { label: '只看核心逻辑，少评论。', value: 1 },
+          { label: '会提建议，但尽量简短。', value: 2 },
+          { label: '给可落地建议并解释背景。', value: 3 }
+        ]
+      },
+      {
+        id: 'd8', dim: 'COL',
+        text: '跨团队沟通出现分歧时，你会：',
+        options: [
+          { label: '先做自己的，减少协作成本。', value: 1 },
+          { label: '先对齐目标，再讨论细节。', value: 2 },
+          { label: '主动拉齐上下文，推动达成共识。', value: 3 }
+        ]
+      },
+      {
+        id: 'd9', dim: 'PRD',
+        text: '开发时你会多关注：',
+        options: [
+          { label: '实现完成就好，体验由产品把关。', value: 1 },
+          { label: '会兼顾一点用户路径。', value: 2 },
+          { label: '会主动思考用户成本和业务价值。', value: 3 }
+        ]
+      },
+      {
+        id: 'd10', dim: 'PRD',
+        text: '当你发现需求可能解决不了真实问题时：',
+        options: [
+          { label: '先按原需求做完。', value: 1 },
+          { label: '私下提醒一下产品同学。', value: 2 },
+          { label: '会提出替代方案并说明取舍。', value: 3 }
+        ]
+      },
+      {
+        id: 'd11', dim: 'OPN',
+        text: '遇到新技术栈时，你通常：',
+        options: [
+          { label: '非必要不学，先用熟悉方案。', value: 1 },
+          { label: '看项目收益决定是否尝试。', value: 2 },
+          { label: '会主动做小实验，验证可行性。', value: 3 }
+        ]
+      },
+      {
+        id: 'd12', dim: 'OPN',
+        text: '你更接近哪种学习模式？',
+        options: [
+          { label: '业务逼到眼前再补。', value: 1 },
+          { label: '按需学习，够用就好。', value: 2 },
+          { label: '日常也会持续输入和复盘。', value: 3 }
+        ]
+      }
+    ];
+
+    const DEV_TYPE_LIBRARY = {
+      ARCH: {
+        code: 'ARCH',
+        cn: '架构师型',
+        intro: '先建结构，再动手。',
+        desc: '你做事先看系统边界和演进路径，喜欢在写代码之前把架构骨架搭稳。团队里遇到复杂问题时，你常是那个能把混乱重新组织成可执行方案的人。'
+      },
+      FIRE: {
+        code: 'FIRE',
+        cn: '救火队长型',
+        intro: '先止血，后优化。',
+        desc: '你对线上风险和紧急场景反应很快，擅长在信息不完整时给出可用解。你可能不是最慢工出细活的人，但往往能在关键时刻把系统从边缘拉回来。'
+      },
+      CRAFT: {
+        code: 'CRAFT',
+        cn: '工匠型',
+        intro: '代码要经得起时间。',
+        desc: '你在意可读性、可维护性和长期成本，对技术债非常敏感。你写下的代码可能不是最快上线的，但通常更稳、更清晰，也更容易被后续同事接手。'
+      },
+      SHIP: {
+        code: 'SHIP',
+        cn: '交付型',
+        intro: '先把价值送到用户手里。',
+        desc: '你偏向结果导向，擅长在约束中拆解任务并持续推进。你很清楚“完美”和“可上线”的边界，习惯先交付闭环，再通过迭代把质量拉起来。'
+      },
+      TOOL: {
+        code: 'TOOL',
+        cn: '工具流型',
+        intro: '能自动化，就不重复。',
+        desc: '你喜欢把重复工作工具化，关注效率杠杆。脚本、模板、流程优化会让你有成就感。团队在你的影响下，通常会越来越工程化、标准化。'
+      },
+      TEAM: {
+        code: 'TEAM',
+        cn: '协作型',
+        intro: '代码是团队运动。',
+        desc: '你善于沟通上下文，愿意做跨角色对齐，是团队里的润滑剂。你知道很多问题不是技术本身，而是信息没对齐；因此你能有效减少返工与误解。'
+      },
+      PROD: {
+        code: 'PROD',
+        cn: '产品工程师型',
+        intro: '技术为业务结果服务。',
+        desc: '你会主动站在用户和业务视角看需求，愿意对“做什么”和“为什么做”提出建议。你通常不满足于只完成任务，更关注最终效果是否达成。'
+      },
+      EXP: {
+        code: 'EXP',
+        cn: '探索型',
+        intro: '保持好奇，持续试错。',
+        desc: '你对新技术和新方法保持开放，愿意通过小步实验寻找更优解。你给团队带来新思路，但也需要留意探索成本与现实交付节奏之间的平衡。'
+      },
+      HYBR: {
+        code: 'HYBR',
+        cn: '混合型',
+        intro: '你的风格很难被单一标签定义。',
+        desc: '你的分布较平均，说明你会根据场景切换工作方式。你不是没有风格，而是适配性强：不同团队阶段和业务目标下，你会选择不同的工程策略。'
+      }
+    };
+
+    const DEV_POSTER_THEMES = {
+      ARCH: {
+        bgA: '#0b1220',
+        bgB: '#1e3a8a',
+        accent: '#93c5fd',
+        soft: '#dbeafe',
+        chip: 'SYSTEM DESIGN',
+        pattern: 'grid'
+      },
+      FIRE: {
+        bgA: '#2a0f0f',
+        bgB: '#b91c1c',
+        accent: '#fca5a5',
+        soft: '#fee2e2',
+        chip: 'INCIDENT RESPONSE',
+        pattern: 'diagonal'
+      },
+      CRAFT: {
+        bgA: '#10261d',
+        bgB: '#166534',
+        accent: '#86efac',
+        soft: '#dcfce7',
+        chip: 'CODE QUALITY',
+        pattern: 'rings'
+      },
+      SHIP: {
+        bgA: '#17202f',
+        bgB: '#2563eb',
+        accent: '#93c5fd',
+        soft: '#e0f2fe',
+        chip: 'DELIVERY FIRST',
+        pattern: 'bars'
+      },
+      TOOL: {
+        bgA: '#1b1631',
+        bgB: '#6d28d9',
+        accent: '#c4b5fd',
+        soft: '#ede9fe',
+        chip: 'AUTOMATION',
+        pattern: 'dots'
+      },
+      TEAM: {
+        bgA: '#0f2233',
+        bgB: '#0e7490',
+        accent: '#67e8f9',
+        soft: '#cffafe',
+        chip: 'COLLABORATION',
+        pattern: 'links'
+      },
+      PROD: {
+        bgA: '#33240f',
+        bgB: '#c2410c',
+        accent: '#fdba74',
+        soft: '#ffedd5',
+        chip: 'PRODUCT MINDSET',
+        pattern: 'stairs'
+      },
+      EXP: {
+        bgA: '#1b1334',
+        bgB: '#7e22ce',
+        accent: '#d8b4fe',
+        soft: '#f3e8ff',
+        chip: 'EXPERIMENTAL',
+        pattern: 'stars'
+      },
+      HYBR: {
+        bgA: '#1f2937',
+        bgB: '#475569',
+        accent: '#cbd5e1',
+        soft: '#f1f5f9',
+        chip: 'ADAPTIVE HYBRID',
+        pattern: 'mix'
+      }
+    };
+
+    const DEV_POSTER_CHARACTERS = {
+      ARCH: {
+        role: '蓝图架构师',
+        skin: '#efc2a3',
+        hair: '#101828',
+        hairStyle: 'slick',
+        top: '#dbeafe',
+        jacket: '#2563eb',
+        pants: '#1f2937',
+        shoes: '#0f172a',
+        pose: 'planner',
+        scene: 'blueprint',
+        prop: 'tablet'
+      },
+      FIRE: {
+        role: '值班救火队长',
+        skin: '#e9b48d',
+        hair: '#2b1b14',
+        hairStyle: 'spiky',
+        top: '#fee2e2',
+        jacket: '#dc2626',
+        pants: '#3f3f46',
+        shoes: '#18181b',
+        pose: 'alert',
+        scene: 'incident',
+        prop: 'pager'
+      },
+      CRAFT: {
+        role: '代码工匠',
+        skin: '#f2c7ad',
+        hair: '#3f2a22',
+        hairStyle: 'bun',
+        top: '#dcfce7',
+        jacket: '#15803d',
+        pants: '#334155',
+        shoes: '#1e293b',
+        pose: 'steady',
+        scene: 'quality',
+        prop: 'wrench'
+      },
+      SHIP: {
+        role: '冲刺交付者',
+        skin: '#d8a280',
+        hair: '#0f172a',
+        hairStyle: 'swept',
+        top: '#e0f2fe',
+        jacket: '#2563eb',
+        pants: '#1e293b',
+        shoes: '#172554',
+        pose: 'stride',
+        scene: 'delivery',
+        prop: 'flag'
+      },
+      TOOL: {
+        role: '自动化工程师',
+        skin: '#f0c9a8',
+        hair: '#24163a',
+        hairStyle: 'hood',
+        top: '#ede9fe',
+        jacket: '#7c3aed',
+        pants: '#312e81',
+        shoes: '#1f1b4b',
+        pose: 'tinker',
+        scene: 'automation',
+        prop: 'laptop'
+      },
+      TEAM: {
+        role: '协作连接者',
+        skin: '#dbab87',
+        hair: '#0f2a3d',
+        hairStyle: 'curly',
+        top: '#cffafe',
+        jacket: '#0891b2',
+        pants: '#164e63',
+        shoes: '#083344',
+        pose: 'open',
+        scene: 'team',
+        prop: 'bubble'
+      },
+      PROD: {
+        role: '产品工程师',
+        skin: '#edbf99',
+        hair: '#40210f',
+        hairStyle: 'bob',
+        top: '#ffedd5',
+        jacket: '#ea580c',
+        pants: '#7c2d12',
+        shoes: '#431407',
+        pose: 'point',
+        scene: 'roadmap',
+        prop: 'note'
+      },
+      EXP: {
+        role: '实验探索者',
+        skin: '#e8b590',
+        hair: '#2e1065',
+        hairStyle: 'wave',
+        top: '#f3e8ff',
+        jacket: '#9333ea',
+        pants: '#4c1d95',
+        shoes: '#2e1065',
+        pose: 'explore',
+        scene: 'lab',
+        prop: 'flask'
+      },
+      HYBR: {
+        role: '多线程混合体',
+        skin: '#e8bb96',
+        hair: '#374151',
+        hairStyle: 'hybrid',
+        top: '#f8fafc',
+        jacket: '#64748b',
+        pants: '#334155',
+        shoes: '#0f172a',
+        pose: 'hybrid',
+        scene: 'hybrid',
+        prop: 'multi'
+      }
+    };
+
+    const DEV_POSTER_DEFAULT_THEME = DEV_POSTER_THEMES.HYBR;
+    const DEV_POSTER_CACHE = {};
+
+    const DEV_NORMAL_TYPES = [
+      { code: 'ARCH', pattern: 'HMH-MMH' },
+      { code: 'FIRE', pattern: 'MHL-MLM' },
+      { code: 'CRAFT', pattern: 'HLH-LLM' },
+      { code: 'SHIP', pattern: 'MHM-LML' },
+      { code: 'TOOL', pattern: 'HMM-LLH' },
+      { code: 'TEAM', pattern: 'MMM-HMM' },
+      { code: 'PROD', pattern: 'MMM-HHM' },
+      { code: 'EXP', pattern: 'LML-MMH' }
+    ];
+
+    const DEV_DIM_EXPLANATIONS = {
+      LGC: {
+        L: '更偏直觉驱动，先把事情跑起来再说。',
+        M: '逻辑和速度相对平衡，按复杂度调整方法。',
+        H: '重视边界、因果和结构，喜欢先厘清再动手。'
+      },
+      SPD: {
+        L: '更看重稳妥，节奏偏保守。',
+        M: '能根据风险调节速度，节奏比较均衡。',
+        H: '推进欲较强，擅长在约束中快速交付。'
+      },
+      QLT: {
+        L: '更关注先可用，质量优化后补。',
+        M: '质量意识存在，但投入会看阶段。',
+        H: '对质量和可维护性要求较高。'
+      },
+      COL: {
+        L: '倾向独立推进，协作沟通相对克制。',
+        M: '能正常协作，沟通风格偏务实。',
+        H: '主动共享上下文，推动团队形成共识。'
+      },
+      PRD: {
+        L: '主要聚焦实现本身，业务视角较少介入。',
+        M: '会兼顾用户与业务，但不总是主导。',
+        H: '技术与业务并重，关注最终结果闭环。'
+      },
+      OPN: {
+        L: '偏向成熟方案，探索欲较低。',
+        M: '按需尝试，探索相对克制。',
+        H: '好奇心强，愿意持续实验和迭代。'
+      }
+    };
+
+    const MODE_CONFIGS = {
+      sbti: {
+        modeLabel: 'SBTI 人格测试',
+        shortLabel: 'SBTI',
+        dimensionMeta,
+        questions,
+        normalTypes: NORMAL_TYPES,
+        typeLibrary: TYPE_LIBRARY,
+        typeImages: TYPE_IMAGES,
+        dimExplanations: DIM_EXPLANATIONS,
+        dimensionOrder,
+        specialEntryQuestion: specialQuestions[0],
+        specialFollowUp: {
+          whenQuestionId: 'drink_gate_q1',
+          whenValue: 3,
+          question: specialQuestions[1],
+          clearAnswerId: 'drink_gate_q2'
+        },
+        defaultModeKicker: '你的主类型',
+        defaultSub: '维度命中度较高，当前结果可视为你的第一人格画像。',
+        defaultBadge: (best, dimCount) => `匹配度 ${best.similarity}% · 精准命中 ${best.exact}/${dimCount} 维`,
+        uiCopy: {
+          progressPrefix: 'SBTI',
+          hintIncomplete: '全选完才会放行。世界已经够乱了，起码把题做完整。',
+          hintComplete: '都做完了。现在可以把你的电子魂魄交给结果页审判。'
+        },
+        noImageTitle: '海报暂未加载',
+        noImageNote: '该类型暂未配置专属海报，先看文字解读。',
+        resultDescTitle: '该人格的简单解读',
+        resultDimTitle: '十五维度评分',
+        funNoteNormal: '本测试仅供娱乐，别拿它当诊断、面试、相亲、分手、招魂、算命或人生判决书。你可以笑，但别太当真。',
+        funNoteSpecial: '本测试仅供娱乐。隐藏人格和傻乐兜底都属于作者故意埋的损招，请勿把它当成医学、心理学、相学、命理学或灵异学依据。',
+        resolveResult: ({ answers, bestNormal, typeLibrary, dimCount }) => {
+          if (answers[DRUNK_TRIGGER_QUESTION_ID] === 2) {
+            return {
+              finalType: typeLibrary.DRUNK,
+              modeKicker: '隐藏人格已激活',
+              badge: '匹配度 100% · 酒精异常因子已接管',
+              sub: '乙醇亲和性过强，系统已直接跳过常规人格审判。',
+              special: true,
+              secondaryType: bestNormal
+            };
+          }
+          if (bestNormal.similarity < 60) {
+            return {
+              finalType: typeLibrary.HHHH,
+              modeKicker: '系统强制兜底',
+              badge: `标准人格库最高匹配仅 ${bestNormal.similarity}%`,
+              sub: '标准人格库对你的脑回路集体罢工了，于是系统把你强制分配给了 HHHH。',
+              special: true,
+              secondaryType: null
+            };
+          }
+          return {
+            finalType: bestNormal,
+            modeKicker: '你的主类型',
+            badge: `匹配度 ${bestNormal.similarity}% · 精准命中 ${bestNormal.exact}/${dimCount} 维`,
+            sub: '维度命中度较高，当前结果可视为你的第一人格画像。',
+            special: false,
+            secondaryType: null
+          };
+        }
+      },
+      dev: {
+        modeLabel: '程序员人格测试',
+        shortLabel: '程序员版',
+        dimensionMeta: DEV_DIMENSION_META,
+        questions: DEV_QUESTIONS,
+        normalTypes: DEV_NORMAL_TYPES,
+        typeLibrary: DEV_TYPE_LIBRARY,
+        typeImages: {},
+        dimExplanations: DEV_DIM_EXPLANATIONS,
+        dimensionOrder: DEV_DIMENSION_ORDER,
+        fallbackMinSimilarity: 45,
+        fallbackTypeCode: 'HYBR',
+        defaultModeKicker: '你的程序员画像',
+        defaultSub: '这是你在代码世界里更常见的工作风格。',
+        defaultBadge: (best, dimCount) => `匹配度 ${best.similarity}% · 画像命中 ${best.exact}/${dimCount} 维`,
+        uiCopy: {
+          progressPrefix: '程序员版',
+          hintIncomplete: '先把题做完，再谈架构、性能和人生。',
+          hintComplete: '题已做完。点击提交，查看你的代码人格画像。'
+        },
+        noImageTitle: '程序员人格海报开发中',
+        noImageNote: '当前先用文字版结果，后续会补齐专属海报资源。',
+        resultDescTitle: '该代码人格的简单解读',
+        resultDimTitle: '六维工程画像',
+        funNoteNormal: '本测试仅供娱乐，不代表能力评估、绩效评价或招聘结论。',
+        funNoteSpecial: '本测试仅供娱乐。若被判定为混合型，说明你更擅长按场景切换工作策略。'
+      }
+    };
+
     const app = {
       shuffledQuestions: [],
       answers: {},
-      previewMode: false
+      previewMode: false,
+      currentMode: 'sbti'
     };
 
     const screens = {
@@ -1588,8 +2150,13 @@
     const questionList = document.getElementById('questionList');
     const progressBar = document.getElementById('progressBar');
     const progressText = document.getElementById('progressText');
+    const currentModeBadge = document.getElementById('currentModeBadge');
     const submitBtn = document.getElementById('submitBtn');
     const testHint = document.getElementById('testHint');
+
+    function getCurrentConfig() {
+      return MODE_CONFIGS[app.currentMode] || MODE_CONFIGS.sbti;
+    }
 
     function showScreen(name) {
       Object.entries(screens).forEach(([key, el]) => {
@@ -1608,17 +2175,22 @@
     }
 
     function getVisibleQuestions() {
+      const config = getCurrentConfig();
       const visible = [...app.shuffledQuestions];
-      const gateIndex = visible.findIndex(q => q.id === 'drink_gate_q1');
-      if (gateIndex !== -1 && app.answers['drink_gate_q1'] === 3) {
-        visible.splice(gateIndex + 1, 0, specialQuestions[1]);
+      const followUp = config.specialFollowUp;
+      if (followUp) {
+        const gateIndex = visible.findIndex(q => q.id === followUp.whenQuestionId);
+        if (gateIndex !== -1 && app.answers[followUp.whenQuestionId] === followUp.whenValue) {
+          visible.splice(gateIndex + 1, 0, followUp.question);
+        }
       }
       return visible;
     }
 
     function getQuestionMetaLabel(q) {
+      const config = getCurrentConfig();
       if (q.special) return '补充题';
-      return app.previewMode ? dimensionMeta[q.dim].name : '维度已隐藏';
+      return app.previewMode ? config.dimensionMeta[q.dim].name : '维度已隐藏';
     }
 
     function renderQuestions() {
@@ -1655,9 +2227,11 @@
           const { name, value } = e.target;
           app.answers[name] = Number(value);
 
-          if (name === 'drink_gate_q1') {
-            if (Number(value) !== 3) {
-              delete app.answers['drink_gate_q2'];
+          const config = getCurrentConfig();
+          const followUp = config.specialFollowUp;
+          if (followUp && name === followUp.whenQuestionId) {
+            if (Number(value) !== followUp.whenValue && followUp.clearAnswerId) {
+              delete app.answers[followUp.clearAnswerId];
             }
             renderQuestions();
             return;
@@ -1671,17 +2245,18 @@
     }
 
     function updateProgress() {
+      const config = getCurrentConfig();
       const visibleQuestions = getVisibleQuestions();
       const total = visibleQuestions.length;
       const done = visibleQuestions.filter(q => app.answers[q.id] !== undefined).length;
       const percent = total ? (done / total) * 100 : 0;
       progressBar.style.width = `${percent}%`;
-      progressText.textContent = `${done} / ${total}`;
+      progressText.textContent = `${config.uiCopy.progressPrefix} ${done} / ${total}`;
       const complete = done === total && total > 0;
       submitBtn.disabled = !complete;
       testHint.textContent = complete
-        ? '都做完了。现在可以把你的电子魂魄交给结果页审判。'
-        : '全选完才会放行。世界已经够乱了，起码把题做完整。';
+        ? config.uiCopy.hintComplete
+        : config.uiCopy.hintIncomplete;
     }
 
     function sumToLevel(score) {
@@ -1698,16 +2273,460 @@
       return pattern.replace(/-/g, '').split('');
     }
 
+    function escapeXml(text) {
+      return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;');
+    }
+
+    function getDevPatternLayer(theme) {
+      if (theme.pattern === 'grid') {
+        return `
+          <g stroke="${theme.soft}" stroke-opacity="0.18" stroke-width="1">
+            <path d="M80 220H820M80 320H820M80 420H820M80 520H820M80 620H820M80 720H820M80 820H820M80 920H820" />
+            <path d="M140 180V980M260 180V980M380 180V980M500 180V980M620 180V980M740 180V980" />
+          </g>
+        `;
+      }
+      if (theme.pattern === 'diagonal') {
+        return `
+          <g stroke="${theme.soft}" stroke-opacity="0.16" stroke-width="18">
+            <path d="M-80 940L460 140" />
+            <path d="M90 980L630 180" />
+            <path d="M260 1020L800 220" />
+            <path d="M430 1060L970 260" />
+          </g>
+        `;
+      }
+      if (theme.pattern === 'rings') {
+        return `
+          <g fill="none" stroke="${theme.soft}" stroke-opacity="0.18" stroke-width="14">
+            <circle cx="250" cy="820" r="180" />
+            <circle cx="250" cy="820" r="120" />
+            <circle cx="250" cy="820" r="60" />
+            <circle cx="680" cy="360" r="140" />
+            <circle cx="680" cy="360" r="84" />
+          </g>
+        `;
+      }
+      if (theme.pattern === 'bars') {
+        return `
+          <g fill="${theme.soft}" fill-opacity="0.16">
+            <rect x="120" y="760" width="88" height="220" rx="16" />
+            <rect x="240" y="700" width="88" height="280" rx="16" />
+            <rect x="360" y="640" width="88" height="340" rx="16" />
+            <rect x="480" y="560" width="88" height="420" rx="16" />
+            <rect x="600" y="500" width="88" height="480" rx="16" />
+          </g>
+        `;
+      }
+      if (theme.pattern === 'dots') {
+        return `
+          <g fill="${theme.soft}" fill-opacity="0.18">
+            <circle cx="180" cy="260" r="12" /><circle cx="260" cy="310" r="10" /><circle cx="340" cy="260" r="12" />
+            <circle cx="420" cy="310" r="10" /><circle cx="500" cy="260" r="12" /><circle cx="580" cy="310" r="10" />
+            <circle cx="660" cy="260" r="12" /><circle cx="740" cy="310" r="10" />
+            <circle cx="180" cy="840" r="12" /><circle cx="260" cy="890" r="10" /><circle cx="340" cy="840" r="12" />
+            <circle cx="420" cy="890" r="10" /><circle cx="500" cy="840" r="12" /><circle cx="580" cy="890" r="10" />
+            <circle cx="660" cy="840" r="12" /><circle cx="740" cy="890" r="10" />
+          </g>
+        `;
+      }
+      if (theme.pattern === 'links') {
+        return `
+          <g stroke="${theme.soft}" stroke-opacity="0.18" stroke-width="8" fill="none" stroke-linecap="round">
+            <path d="M170 760C250 690 310 690 390 760" />
+            <path d="M390 760C470 830 530 830 610 760" />
+            <path d="M610 760C690 690 750 690 830 760" />
+            <path d="M170 880C250 810 310 810 390 880" />
+            <path d="M390 880C470 950 530 950 610 880" />
+            <path d="M610 880C690 810 750 810 830 880" />
+          </g>
+        `;
+      }
+      if (theme.pattern === 'stairs') {
+        return `
+          <g fill="${theme.soft}" fill-opacity="0.16">
+            <rect x="140" y="900" width="130" height="70" rx="12" />
+            <rect x="270" y="830" width="130" height="140" rx="12" />
+            <rect x="400" y="760" width="130" height="210" rx="12" />
+            <rect x="530" y="690" width="130" height="280" rx="12" />
+            <rect x="660" y="620" width="130" height="350" rx="12" />
+          </g>
+        `;
+      }
+      if (theme.pattern === 'stars') {
+        return `
+          <g fill="${theme.soft}" fill-opacity="0.16">
+            <path d="M220 780l24 56 60 6-46 38 14 58-52-30-52 30 14-58-46-38 60-6z" />
+            <path d="M510 640l20 46 50 5-38 32 12 48-44-26-44 26 12-48-38-32 50-5z" />
+            <path d="M700 840l24 56 60 6-46 38 14 58-52-30-52 30 14-58-46-38 60-6z" />
+          </g>
+        `;
+      }
+      return `
+        <g stroke="${theme.soft}" stroke-opacity="0.16" stroke-width="10" fill="none">
+          <path d="M140 300C240 240 320 360 420 300C520 240 600 360 700 300" />
+          <path d="M140 860C240 800 320 920 420 860C520 800 600 920 700 860" />
+          <path d="M180 520H760" />
+          <path d="M180 660H760" />
+        </g>
+      `;
+    }
+
+    function getDevHairLayer(character) {
+      if (character.hairStyle === 'slick') {
+        return `<path d="M396 376Q418 314 470 314Q520 314 546 372Q520 350 488 350Q438 350 396 376Z" fill="${character.hair}" />`;
+      }
+      if (character.hairStyle === 'spiky') {
+        return `<path d="M394 376L410 332L432 352L450 326L474 346L500 322L522 352L544 334L548 378Q514 352 470 352Q430 352 394 376Z" fill="${character.hair}" />`;
+      }
+      if (character.hairStyle === 'bun') {
+        return `<g><circle cx="514" cy="334" r="20" fill="${character.hair}" /><path d="M396 382Q408 324 470 324Q528 324 548 382Q518 356 470 356Q426 356 396 382Z" fill="${character.hair}" /></g>`;
+      }
+      if (character.hairStyle === 'swept') {
+        return `<path d="M392 380Q422 320 486 320Q530 320 552 360Q514 344 476 346Q430 348 392 380Z" fill="${character.hair}" />`;
+      }
+      if (character.hairStyle === 'hood') {
+        return `<path d="M378 410Q384 314 470 302Q554 314 562 410L538 456Q524 396 470 392Q416 396 402 456Z" fill="${character.hair}" />`;
+      }
+      if (character.hairStyle === 'curly') {
+        return `<g fill="${character.hair}"><circle cx="424" cy="352" r="28" /><circle cx="466" cy="330" r="34" /><circle cx="514" cy="348" r="30" /><circle cx="540" cy="382" r="24" /><path d="M400 386Q432 350 470 350Q514 350 544 388Q510 364 470 364Q434 364 400 386Z" /></g>`;
+      }
+      if (character.hairStyle === 'bob') {
+        return `<path d="M398 346Q432 314 470 314Q510 314 542 346L548 414Q512 402 470 402Q430 402 392 414Z" fill="${character.hair}" />`;
+      }
+      if (character.hairStyle === 'wave') {
+        return `<path d="M394 382Q404 320 470 320Q536 320 548 390Q526 366 494 366Q448 366 394 382Z" fill="${character.hair}" /><path d="M518 372Q542 406 528 448" fill="none" stroke="${character.hair}" stroke-width="18" stroke-linecap="round" />`;
+      }
+      return `<path d="M392 374Q416 318 470 318Q524 318 548 374Q514 348 470 348Q430 348 392 374Z" fill="${character.hair}" />`;
+    }
+
+    function getDevSceneLayer(theme, character) {
+      if (character.scene === 'blueprint') {
+        return `
+          <g>
+            <rect x="576" y="468" width="184" height="240" rx="22" fill="#ffffff" fill-opacity="0.08" stroke="${theme.soft}" stroke-opacity="0.3" />
+            <path d="M608 520H728M608 560H728M608 600H728M608 640H700" stroke="${theme.soft}" stroke-opacity="0.55" stroke-width="8" stroke-linecap="round" />
+            <circle cx="634" cy="620" r="24" fill="none" stroke="${theme.accent}" stroke-width="8" stroke-opacity="0.85" />
+            <path d="M676 620H722M698 598V642" stroke="${theme.accent}" stroke-width="8" stroke-linecap="round" stroke-opacity="0.85" />
+          </g>
+        `;
+      }
+      if (character.scene === 'incident') {
+        return `
+          <g>
+            <rect x="602" y="484" width="162" height="180" rx="22" fill="#2a0f0f" fill-opacity="0.38" stroke="${theme.soft}" stroke-opacity="0.24" />
+            <circle cx="684" cy="560" r="34" fill="${theme.accent}" fill-opacity="0.22" />
+            <path d="M684 532V572" stroke="${theme.soft}" stroke-width="12" stroke-linecap="round" />
+            <circle cx="684" cy="596" r="6" fill="${theme.soft}" />
+            <rect x="130" y="820" width="112" height="92" rx="18" fill="#fff7ed" fill-opacity="0.18" stroke="${theme.soft}" stroke-opacity="0.26" />
+            <path d="M152 852H220M152 880H206" stroke="${theme.soft}" stroke-width="8" stroke-linecap="round" />
+          </g>
+        `;
+      }
+      if (character.scene === 'quality') {
+        return `
+          <g>
+            <rect x="116" y="494" width="244" height="196" rx="22" fill="#ffffff" fill-opacity="0.08" stroke="${theme.soft}" stroke-opacity="0.24" />
+            <path d="M152 544H316M152 586H280M152 628H300" stroke="${theme.soft}" stroke-width="8" stroke-linecap="round" />
+            <path d="M152 666L194 706L318 560" fill="none" stroke="${theme.accent}" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" />
+          </g>
+        `;
+      }
+      if (character.scene === 'delivery') {
+        return `
+          <g>
+            <path d="M612 862L760 714" stroke="${theme.soft}" stroke-opacity="0.42" stroke-width="14" stroke-linecap="round" />
+            <path d="M720 714H760V754" fill="none" stroke="${theme.soft}" stroke-opacity="0.7" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" />
+            <rect x="606" y="518" width="164" height="110" rx="22" fill="#ffffff" fill-opacity="0.08" stroke="${theme.soft}" stroke-opacity="0.24" />
+            <rect x="632" y="552" width="112" height="18" rx="9" fill="${theme.soft}" fill-opacity="0.32" />
+            <rect x="632" y="590" width="88" height="18" rx="9" fill="${theme.accent}" fill-opacity="0.54" />
+          </g>
+        `;
+      }
+      if (character.scene === 'automation') {
+        return `
+          <g>
+            <rect x="596" y="472" width="180" height="206" rx="22" fill="#ffffff" fill-opacity="0.08" stroke="${theme.soft}" stroke-opacity="0.24" />
+            <circle cx="654" cy="584" r="34" fill="none" stroke="${theme.accent}" stroke-width="10" stroke-opacity="0.86" />
+            <circle cx="654" cy="584" r="12" fill="${theme.accent}" fill-opacity="0.78" />
+            <path d="M654 540V514M654 654V628M610 584H584M724 584H698M622 552L604 534M704 634L686 616M704 534L686 552M622 616L604 634" stroke="${theme.soft}" stroke-width="10" stroke-linecap="round" />
+          </g>
+        `;
+      }
+      if (character.scene === 'team') {
+        return `
+          <g>
+            <rect x="128" y="522" width="132" height="88" rx="24" fill="#ffffff" fill-opacity="0.08" stroke="${theme.soft}" stroke-opacity="0.24" />
+            <rect x="640" y="500" width="144" height="96" rx="24" fill="#ffffff" fill-opacity="0.08" stroke="${theme.soft}" stroke-opacity="0.24" />
+            <path d="M260 566C332 548 388 552 446 586" stroke="${theme.soft}" stroke-width="8" stroke-opacity="0.42" fill="none" stroke-linecap="round" />
+            <path d="M542 586C596 548 650 540 640 548" stroke="${theme.soft}" stroke-width="8" stroke-opacity="0.42" fill="none" stroke-linecap="round" />
+          </g>
+        `;
+      }
+      if (character.scene === 'roadmap') {
+        return `
+          <g>
+            <rect x="112" y="492" width="252" height="212" rx="24" fill="#ffffff" fill-opacity="0.08" stroke="${theme.soft}" stroke-opacity="0.24" />
+            <rect x="142" y="530" width="74" height="60" rx="14" fill="${theme.accent}" fill-opacity="0.24" />
+            <rect x="234" y="530" width="98" height="60" rx="14" fill="${theme.soft}" fill-opacity="0.18" />
+            <rect x="142" y="610" width="116" height="60" rx="14" fill="${theme.soft}" fill-opacity="0.22" />
+            <rect x="272" y="610" width="60" height="60" rx="14" fill="${theme.accent}" fill-opacity="0.28" />
+          </g>
+        `;
+      }
+      if (character.scene === 'lab') {
+        return `
+          <g>
+            <circle cx="678" cy="548" r="82" fill="#ffffff" fill-opacity="0.06" stroke="${theme.soft}" stroke-opacity="0.26" />
+            <circle cx="644" cy="526" r="8" fill="${theme.soft}" fill-opacity="0.68" />
+            <circle cx="706" cy="508" r="6" fill="${theme.soft}" fill-opacity="0.6" />
+            <circle cx="724" cy="572" r="8" fill="${theme.accent}" fill-opacity="0.72" />
+            <path d="M644 526L706 508L724 572L678 548Z" stroke="${theme.soft}" stroke-width="6" stroke-opacity="0.48" fill="none" />
+          </g>
+        `;
+      }
+      return `
+        <g>
+          <rect x="124" y="492" width="206" height="152" rx="24" fill="#ffffff" fill-opacity="0.08" stroke="${theme.soft}" stroke-opacity="0.22" />
+          <rect x="586" y="514" width="176" height="128" rx="24" fill="#ffffff" fill-opacity="0.08" stroke="${theme.soft}" stroke-opacity="0.22" />
+          <path d="M330 568H586" stroke="${theme.soft}" stroke-width="8" stroke-opacity="0.28" stroke-linecap="round" />
+        </g>
+      `;
+    }
+
+    function getDevPose(character) {
+      if (character.pose === 'planner') {
+        return {
+          leftArm: 'M394 556Q356 634 352 718',
+          rightArm: 'M546 554Q612 600 632 682',
+          leftLeg: 'M434 742Q414 836 404 964',
+          rightLeg: 'M502 742Q528 832 554 964',
+          shoulderTilt: -4,
+          handLeft: { x: 352, y: 718 },
+          handRight: { x: 632, y: 682 }
+        };
+      }
+      if (character.pose === 'alert') {
+        return {
+          leftArm: 'M394 562Q334 598 300 686',
+          rightArm: 'M548 558Q608 528 664 584',
+          leftLeg: 'M436 742Q414 820 386 960',
+          rightLeg: 'M504 742Q544 824 590 952',
+          shoulderTilt: -10,
+          handLeft: { x: 300, y: 686 },
+          handRight: { x: 664, y: 584 }
+        };
+      }
+      if (character.pose === 'steady') {
+        return {
+          leftArm: 'M394 562Q360 628 366 726',
+          rightArm: 'M548 562Q592 630 576 736',
+          leftLeg: 'M438 742Q430 852 432 966',
+          rightLeg: 'M500 742Q514 846 530 966',
+          shoulderTilt: 0,
+          handLeft: { x: 366, y: 726 },
+          handRight: { x: 576, y: 736 }
+        };
+      }
+      if (character.pose === 'stride') {
+        return {
+          leftArm: 'M394 562Q338 620 326 714',
+          rightArm: 'M548 558Q618 544 678 606',
+          leftLeg: 'M438 742Q382 836 340 964',
+          rightLeg: 'M500 742Q552 802 616 946',
+          shoulderTilt: -8,
+          handLeft: { x: 326, y: 714 },
+          handRight: { x: 678, y: 606 }
+        };
+      }
+      if (character.pose === 'tinker') {
+        return {
+          leftArm: 'M394 564Q362 622 372 708',
+          rightArm: 'M548 564Q596 610 624 692',
+          leftLeg: 'M438 742Q412 852 392 970',
+          rightLeg: 'M500 742Q520 846 542 970',
+          shoulderTilt: 2,
+          handLeft: { x: 372, y: 708 },
+          handRight: { x: 624, y: 692 }
+        };
+      }
+      if (character.pose === 'open') {
+        return {
+          leftArm: 'M394 560Q314 604 254 670',
+          rightArm: 'M548 560Q624 604 684 670',
+          leftLeg: 'M438 742Q422 846 408 968',
+          rightLeg: 'M500 742Q520 846 540 968',
+          shoulderTilt: 0,
+          handLeft: { x: 254, y: 670 },
+          handRight: { x: 684, y: 670 }
+        };
+      }
+      if (character.pose === 'point') {
+        return {
+          leftArm: 'M394 560Q350 620 344 716',
+          rightArm: 'M548 556Q632 510 698 500',
+          leftLeg: 'M438 742Q422 846 416 968',
+          rightLeg: 'M500 742Q520 844 538 968',
+          shoulderTilt: -4,
+          handLeft: { x: 344, y: 716 },
+          handRight: { x: 698, y: 500 }
+        };
+      }
+      if (character.pose === 'explore') {
+        return {
+          leftArm: 'M394 562Q340 628 324 732',
+          rightArm: 'M548 560Q620 496 658 408',
+          leftLeg: 'M438 742Q420 846 412 970',
+          rightLeg: 'M500 742Q530 840 566 966',
+          shoulderTilt: 4,
+          handLeft: { x: 324, y: 732 },
+          handRight: { x: 658, y: 408 }
+        };
+      }
+      return {
+        leftArm: 'M394 562Q336 612 314 700',
+        rightArm: 'M548 560Q618 560 670 642',
+        leftLeg: 'M438 742Q408 844 388 968',
+        rightLeg: 'M500 742Q540 838 586 962',
+        shoulderTilt: -2,
+        handLeft: { x: 314, y: 700 },
+        handRight: { x: 670, y: 642 }
+      };
+    }
+
+    function getDevHandPropLayer(theme, character, pose) {
+      if (character.prop === 'tablet') {
+        return `<g transform="translate(${pose.handRight.x - 20} ${pose.handRight.y - 34}) rotate(12)"><rect width="72" height="98" rx="12" fill="#e2e8f0" /><rect x="8" y="10" width="56" height="70" rx="8" fill="#0f172a" /><path d="M18 28H54M18 46H54M18 64H40" stroke="${theme.accent}" stroke-width="6" stroke-linecap="round" /></g>`;
+      }
+      if (character.prop === 'pager') {
+        return `<g transform="translate(${pose.handRight.x - 18} ${pose.handRight.y - 22}) rotate(10)"><rect width="54" height="84" rx="12" fill="#111827" /><rect x="8" y="14" width="38" height="30" rx="8" fill="#7f1d1d" /><path d="M16 58H38" stroke="${theme.soft}" stroke-width="6" stroke-linecap="round" /><circle cx="27" cy="24" r="6" fill="${theme.accent}" /></g>`;
+      }
+      if (character.prop === 'wrench') {
+        return `<g transform="translate(${pose.handRight.x - 8} ${pose.handRight.y - 18}) rotate(24)"><path d="M0 64L50 14" stroke="#dbeafe" stroke-width="16" stroke-linecap="round" /><circle cx="54" cy="10" r="16" fill="none" stroke="#dbeafe" stroke-width="10" /></g>`;
+      }
+      if (character.prop === 'flag') {
+        return `<g transform="translate(${pose.handRight.x - 4} ${pose.handRight.y - 66})"><path d="M0 0V124" stroke="#f8fafc" stroke-width="10" stroke-linecap="round" /><path d="M6 10H76L54 48H6Z" fill="${theme.accent}" /></g>`;
+      }
+      if (character.prop === 'laptop') {
+        return `<g transform="translate(${pose.handRight.x - 42} ${pose.handRight.y - 22}) rotate(6)"><rect width="116" height="72" rx="10" fill="#e9d5ff" /><rect x="10" y="10" width="96" height="46" rx="8" fill="#1e1b4b" /><rect x="-6" y="68" width="128" height="14" rx="7" fill="#c4b5fd" /></g>`;
+      }
+      if (character.prop === 'bubble') {
+        return `<g transform="translate(${pose.handRight.x - 18} ${pose.handRight.y - 24})"><rect width="88" height="56" rx="18" fill="#ffffff" fill-opacity="0.2" stroke="${theme.soft}" stroke-opacity="0.8" /><path d="M30 56L22 80L54 58" fill="#ffffff" fill-opacity="0.2" stroke="${theme.soft}" stroke-opacity="0.8" stroke-linejoin="round" /><path d="M20 24H68" stroke="${theme.soft}" stroke-width="6" stroke-linecap="round" /></g>`;
+      }
+      if (character.prop === 'note') {
+        return `<g transform="translate(${pose.handRight.x - 18} ${pose.handRight.y - 18}) rotate(-12)"><rect width="74" height="74" rx="10" fill="#fdba74" /><path d="M16 22H58M16 38H52M16 54H44" stroke="#7c2d12" stroke-width="6" stroke-linecap="round" /></g>`;
+      }
+      if (character.prop === 'flask') {
+        return `<g transform="translate(${pose.handRight.x - 22} ${pose.handRight.y - 14})"><path d="M18 0V28L0 64Q-6 80 10 80H58Q74 80 68 64L50 28V0" fill="#ddd6fe" fill-opacity="0.18" stroke="${theme.soft}" stroke-width="8" stroke-linejoin="round" /><path d="M10 58H58" stroke="${theme.accent}" stroke-width="10" stroke-linecap="round" /><circle cx="26" cy="46" r="6" fill="${theme.accent}" /></g>`;
+      }
+      return `
+        <g>
+          <g transform="translate(${pose.handLeft.x - 26} ${pose.handLeft.y - 22}) rotate(-8)"><rect width="72" height="64" rx="10" fill="#e2e8f0" /><path d="M16 22H56M16 40H50" stroke="#475569" stroke-width="6" stroke-linecap="round" /></g>
+          <g transform="translate(${pose.handRight.x - 18} ${pose.handRight.y - 18}) rotate(10)"><rect width="64" height="64" rx="10" fill="#cbd5e1" /><path d="M14 22H50M14 40H44" stroke="#334155" stroke-width="6" stroke-linecap="round" /></g>
+        </g>
+      `;
+    }
+
+    function getDevCharacterLayer(theme, character) {
+      const pose = getDevPose(character);
+      const hairLayer = getDevHairLayer(character);
+      const propLayer = getDevHandPropLayer(theme, character, pose);
+
+      return `
+        <g transform="translate(0 18)">
+          <ellipse cx="470" cy="1008" rx="210" ry="34" fill="#020617" fill-opacity="0.26" />
+          <g transform="rotate(${pose.shoulderTilt} 470 580)">
+            <path d="${pose.leftArm}" fill="none" stroke="${character.jacket}" stroke-width="34" stroke-linecap="round" />
+            <path d="${pose.rightArm}" fill="none" stroke="${character.jacket}" stroke-width="34" stroke-linecap="round" />
+            <path d="M392 516Q470 456 548 516L574 744Q470 790 366 744Z" fill="${character.jacket}" />
+            <path d="M430 526Q470 500 510 526L520 706Q470 724 420 706Z" fill="${character.top}" />
+            <path d="M450 454H490V510H450Z" fill="${character.skin}" />
+            <circle cx="470" cy="390" r="62" fill="${character.skin}" />
+            ${hairLayer}
+            <circle cx="446" cy="394" r="5" fill="#17212f" />
+            <circle cx="492" cy="394" r="5" fill="#17212f" />
+            <path d="M448 426Q470 440 492 426" fill="none" stroke="#8a4b38" stroke-width="5" stroke-linecap="round" />
+          </g>
+          <path d="${pose.leftLeg}" fill="none" stroke="${character.pants}" stroke-width="34" stroke-linecap="round" />
+          <path d="${pose.rightLeg}" fill="none" stroke="${character.pants}" stroke-width="34" stroke-linecap="round" />
+          <ellipse cx="400" cy="980" rx="42" ry="18" fill="${character.shoes}" />
+          <ellipse cx="552" cy="980" rx="42" ry="18" fill="${character.shoes}" />
+          <circle cx="${pose.handLeft.x}" cy="${pose.handLeft.y}" r="16" fill="${character.skin}" />
+          <circle cx="${pose.handRight.x}" cy="${pose.handRight.y}" r="16" fill="${character.skin}" />
+          ${propLayer}
+        </g>
+      `;
+    }
+
+    function buildDevPosterDataUri(type) {
+      const code = type.code || 'HYBR';
+      if (DEV_POSTER_CACHE[code]) {
+        return DEV_POSTER_CACHE[code];
+      }
+
+      const theme = DEV_POSTER_THEMES[code] || DEV_POSTER_DEFAULT_THEME;
+      const character = DEV_POSTER_CHARACTERS[code] || DEV_POSTER_CHARACTERS.HYBR;
+      const safeCode = escapeXml(type.code || 'HYBR');
+      const safeName = escapeXml(type.cn || '混合型');
+      const safeIntro = escapeXml(type.intro || '持续迭代。');
+      const safeChip = escapeXml(theme.chip || 'DEV PERSONA');
+      const safeRole = escapeXml(character.role || '程序员角色');
+      const patternLayer = getDevPatternLayer(theme);
+      const sceneLayer = getDevSceneLayer(theme, character);
+      const characterLayer = getDevCharacterLayer(theme, character);
+
+      const svg = `
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 1200" role="img" aria-label="${safeCode} ${safeName} 程序员人格海报">
+          <defs>
+            <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="${theme.bgA}" />
+              <stop offset="100%" stop-color="${theme.bgB}" />
+            </linearGradient>
+            <linearGradient id="glow" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stop-color="${theme.accent}" stop-opacity="0.08" />
+              <stop offset="100%" stop-color="${theme.accent}" stop-opacity="0.35" />
+            </linearGradient>
+          </defs>
+          <rect x="0" y="0" width="900" height="1200" fill="url(#bg)" rx="34" />
+          <circle cx="760" cy="160" r="190" fill="${theme.accent}" fill-opacity="0.18" />
+          <circle cx="130" cy="1080" r="240" fill="${theme.accent}" fill-opacity="0.14" />
+          <rect x="72" y="72" width="756" height="1056" rx="28" fill="none" stroke="${theme.soft}" stroke-opacity="0.38" />
+          ${patternLayer}
+          ${sceneLayer}
+          <rect x="112" y="102" width="268" height="44" rx="22" fill="${theme.soft}" fill-opacity="0.2" />
+          <text x="246" y="131" text-anchor="middle" fill="${theme.soft}" font-size="20" font-family="Arial, sans-serif" font-weight="700" letter-spacing="1.5">${safeChip}</text>
+          <text x="110" y="275" fill="#ffffff" font-size="122" font-family="Arial, sans-serif" font-weight="900" letter-spacing="4">${safeCode}</text>
+          <text x="114" y="340" fill="${theme.soft}" font-size="44" font-family="Arial, sans-serif" font-weight="700">${safeName}</text>
+          <rect x="112" y="392" width="676" height="138" rx="20" fill="#000000" fill-opacity="0.2" />
+          <text x="146" y="450" fill="#ffffff" font-size="34" font-family="Arial, sans-serif" font-weight="700">${safeIntro}</text>
+          <text x="146" y="494" fill="${theme.soft}" font-size="24" font-family="Arial, sans-serif" font-weight="700" letter-spacing="1.2">${safeRole}</text>
+          ${characterLayer}
+          <rect x="112" y="1038" width="676" height="58" rx="16" fill="url(#glow)" />
+          <text x="450" y="1075" text-anchor="middle" fill="#ffffff" font-size="24" font-family="Arial, sans-serif" font-weight="700" letter-spacing="2">PROGRAMMER PERSONA POSTER</text>
+        </svg>
+      `;
+
+      const dataUri = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+      DEV_POSTER_CACHE[code] = dataUri;
+      return dataUri;
+    }
+
     function getDrunkTriggered() {
       return app.answers[DRUNK_TRIGGER_QUESTION_ID] === 2;
     }
 
     function computeResult() {
+      const config = getCurrentConfig();
       const rawScores = {};
       const levels = {};
-      Object.keys(dimensionMeta).forEach(dim => { rawScores[dim] = 0; });
+      Object.keys(config.dimensionMeta).forEach(dim => { rawScores[dim] = 0; });
 
-      questions.forEach(q => {
+      config.questions.forEach(q => {
         rawScores[q.dim] += Number(app.answers[q.id] || 0);
       });
 
@@ -1715,8 +2734,9 @@
         levels[dim] = sumToLevel(score);
       });
 
-      const userVector = dimensionOrder.map(dim => levelNum(levels[dim]));
-      const ranked = NORMAL_TYPES.map(type => {
+      const userVector = config.dimensionOrder.map(dim => levelNum(levels[dim]));
+      const maxDistance = config.dimensionOrder.length * 2;
+      const ranked = config.normalTypes.map(type => {
         const vector = parsePattern(type.pattern).map(levelNum);
         let distance = 0;
         let exact = 0;
@@ -1725,8 +2745,8 @@
           distance += diff;
           if (diff === 0) exact += 1;
         }
-        const similarity = Math.max(0, Math.round((1 - distance / 30) * 100));
-        return { ...type, ...TYPE_LIBRARY[type.code], distance, exact, similarity };
+        const similarity = Math.max(0, Math.round((1 - distance / maxDistance) * 100));
+        return { ...type, ...config.typeLibrary[type.code], distance, exact, similarity };
       }).sort((a, b) => {
         if (a.distance !== b.distance) return a.distance - b.distance;
         if (b.exact !== a.exact) return b.exact - a.exact;
@@ -1734,33 +2754,42 @@
       });
 
       const bestNormal = ranked[0];
-      const drunkTriggered = getDrunkTriggered();
-
-      let finalType;
-      let modeKicker = '你的主类型';
-      let badge = `匹配度 ${bestNormal.similarity}% · 精准命中 ${bestNormal.exact}/15 维`;
-      let sub = '维度命中度较高，当前结果可视为你的第一人格画像。';
+      let finalType = bestNormal;
+      let modeKicker = config.defaultModeKicker;
+      let badge = config.defaultBadge(bestNormal, config.dimensionOrder.length);
+      let sub = config.defaultSub;
       let special = false;
       let secondaryType = null;
 
-      if (drunkTriggered) {
-        finalType = TYPE_LIBRARY.DRUNK;
-        secondaryType = bestNormal;
-        modeKicker = '隐藏人格已激活';
-        badge = '匹配度 100% · 酒精异常因子已接管';
-        sub = '乙醇亲和性过强，系统已直接跳过常规人格审判。';
+      if (typeof config.resolveResult === 'function') {
+        const resolved = config.resolveResult({
+          answers: app.answers,
+          bestNormal,
+          typeLibrary: config.typeLibrary,
+          dimCount: config.dimensionOrder.length
+        });
+        if (resolved) {
+          finalType = resolved.finalType;
+          modeKicker = resolved.modeKicker;
+          badge = resolved.badge;
+          sub = resolved.sub;
+          special = Boolean(resolved.special);
+          secondaryType = resolved.secondaryType || null;
+        }
+      } else if (
+        config.fallbackTypeCode &&
+        typeof config.fallbackMinSimilarity === 'number' &&
+        bestNormal.similarity < config.fallbackMinSimilarity
+      ) {
+        finalType = config.typeLibrary[config.fallbackTypeCode] || bestNormal;
+        modeKicker = '系统判定为混合型';
+        badge = `标准画像最高匹配仅 ${bestNormal.similarity}%`;
+        sub = '你的风格跨画像分布较均衡，因此被归入混合型。';
         special = true;
-      } else if (bestNormal.similarity < 60) {
-        finalType = TYPE_LIBRARY.HHHH;
-        modeKicker = '系统强制兜底';
-        badge = `标准人格库最高匹配仅 ${bestNormal.similarity}%`;
-        sub = '标准人格库对你的脑回路集体罢工了，于是系统把你强制分配给了 HHHH。';
-        special = true;
-      } else {
-        finalType = bestNormal;
       }
 
       return {
+        config,
         rawScores,
         levels,
         ranked,
@@ -1775,14 +2804,15 @@
     }
 
     function renderDimList(result) {
+      const config = getCurrentConfig();
       const dimList = document.getElementById('dimList');
-      dimList.innerHTML = dimensionOrder.map(dim => {
+      dimList.innerHTML = config.dimensionOrder.map(dim => {
         const level = result.levels[dim];
-        const explanation = DIM_EXPLANATIONS[dim][level];
+        const explanation = config.dimExplanations[dim][level];
         return `
           <div class="dim-item">
             <div class="dim-item-top">
-              <div class="dim-item-name">${dimensionMeta[dim].name}</div>
+              <div class="dim-item-name">${config.dimensionMeta[dim].name}</div>
               <div class="dim-item-score">${level} / ${result.rawScores[dim]}分</div>
             </div>
             <p>${explanation}</p>
@@ -1794,52 +2824,73 @@
     function renderResult() {
       const result = computeResult();
       const type = result.finalType;
+      const config = result.config;
 
-      document.getElementById('resultModeKicker').textContent = result.modeKicker;
+      document.getElementById('resultModeKicker').textContent = `${config.shortLabel} · ${result.modeKicker}`;
       document.getElementById('resultTypeName').textContent = `${type.code}（${type.cn}）`;
       document.getElementById('matchBadge').textContent = result.badge;
       document.getElementById('resultTypeSub').textContent = result.sub;
+      document.getElementById('resultDescTitle').textContent = config.resultDescTitle || '该人格的简单解读';
+      document.getElementById('resultDimTitle').textContent = config.resultDimTitle || '十五维度评分';
       document.getElementById('resultDesc').textContent = type.desc;
       document.getElementById('posterCaption').textContent = type.intro;
       document.getElementById('funNote').textContent = result.special
-        ? '本测试仅供娱乐。隐藏人格和傻乐兜底都属于作者故意埋的损招，请勿把它当成医学、心理学、相学、命理学或灵异学依据。'
-        : '本测试仅供娱乐，别拿它当诊断、面试、相亲、分手、招魂、算命或人生判决书。你可以笑，但别太当真。';
+        ? config.funNoteSpecial
+        : config.funNoteNormal;
 
       const posterBox = document.getElementById('posterBox');
       const posterImage = document.getElementById('posterImage');
-      const imageSrc = TYPE_IMAGES[type.code];
+      const posterFallback = document.getElementById('posterFallback');
+      const posterFallbackCode = document.getElementById('posterFallbackCode');
+      const posterFallbackName = document.getElementById('posterFallbackName');
+      const posterFallbackNote = document.getElementById('posterFallbackNote');
+      const imageSrc = config.typeImages[type.code]
+        || (app.currentMode === 'dev' ? buildDevPosterDataUri(type) : null);
       if (imageSrc) {
         posterImage.src = imageSrc;
         posterImage.alt = `${type.code}（${type.cn}）`;
         posterBox.classList.remove('no-image');
+        posterFallback.setAttribute('aria-hidden', 'true');
       } else {
         posterImage.removeAttribute('src');
         posterImage.alt = '';
+        posterFallbackCode.textContent = type.code;
+        posterFallbackName.textContent = config.noImageTitle;
+        posterFallbackNote.textContent = `${type.code}（${type.cn}） · ${config.noImageNote}`;
         posterBox.classList.add('no-image');
+        posterFallback.setAttribute('aria-hidden', 'false');
       }
 
       renderDimList(result);
       showScreen('result');
     }
 
-    function startTest(preview = false) {
+    function startTest(mode = 'sbti', preview = false) {
+      const config = MODE_CONFIGS[mode] || MODE_CONFIGS.sbti;
+      app.currentMode = mode;
       app.previewMode = preview;
       app.answers = {};
-      const shuffledRegular = shuffle(questions);
-      const insertIndex = Math.floor(Math.random() * shuffledRegular.length) + 1;
-      app.shuffledQuestions = [
-        ...shuffledRegular.slice(0, insertIndex),
-        specialQuestions[0],
-        ...shuffledRegular.slice(insertIndex)
-      ];
+      currentModeBadge.textContent = config.modeLabel;
+      const shuffledRegular = shuffle(config.questions);
+      if (config.specialEntryQuestion) {
+        const insertIndex = Math.floor(Math.random() * shuffledRegular.length) + 1;
+        app.shuffledQuestions = [
+          ...shuffledRegular.slice(0, insertIndex),
+          config.specialEntryQuestion,
+          ...shuffledRegular.slice(insertIndex)
+        ];
+      } else {
+        app.shuffledQuestions = shuffledRegular;
+      }
       renderQuestions();
       showScreen('test');
     }
 
-    document.getElementById('startBtn').addEventListener('click', () => startTest(false));
+    document.getElementById('startBtn').addEventListener('click', () => startTest('sbti', false));
+    document.getElementById('startDevBtn').addEventListener('click', () => startTest('dev', false));
     document.getElementById('backIntroBtn').addEventListener('click', () => showScreen('intro'));
     document.getElementById('submitBtn').addEventListener('click', renderResult);
-    document.getElementById('restartBtn').addEventListener('click', () => startTest(false));
+    document.getElementById('restartBtn').addEventListener('click', () => startTest(app.currentMode, false));
     document.getElementById('toTopBtn').addEventListener('click', () => showScreen('intro'));
   </script>
   <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3811349067654166"
